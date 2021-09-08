@@ -2,12 +2,13 @@
 # unraid_array_fan.sh v0.6
 # v0.1: By xamindar: First try at it.
 # v0.2: Made a small change so the fan speed on low doesn't fluctuate every time the script is run.
-# v0.3: It will now enable fan speed change before trying to change it. I missed 
+# v0.3: It will now enable fan speed change before trying to change it. I missed
 #        it at first because pwmconfig was doing it for me while I was testing the fan.
 # v0.4: Corrected temp reading to "Temperature_Celsius" as my new Seagate drive
 #        was returning two numbers with just "Temperature".
 # v0.5: By Pauven:  Added linear PWM logic to slowly ramp speed when fan is between HIGH and OFF.
 # v0.6: By kmwoley: Added fan start speed. Added logging, suppressed unless fan speed is changed.
+# v0.7: jonreeve: added fan name so I can dupe the script for front and rear fans, added RPM logging
 # A simple script to check for the highest hard disk temperatures in an array
 # or backplane and then set the fan to an apropriate speed. Fan needs to be connected
 # to motherboard with pwm support, not array.
@@ -15,14 +16,14 @@
 
 ### VARIABLES FOR USER TO SET ###
 # Amount of drives in the array. Make sure it matches the amount you filled out below.
-NUM_OF_DRIVES=5
+NUM_OF_DRIVES=2
 
 # unRAID drives that are in the array/backplane of the fan we need to control
 HD[1]=/dev/sdb
 HD[2]=/dev/sdc
-HD[3]=/dev/sdd
-HD[4]=/dev/sde
-HD[5]=/dev/sdf
+#HD[3]=/dev/sdd
+#HD[4]=/dev/sde
+#HD[5]=/dev/sdf
 #HD[6]=/dev/sdg
 #HD[7]=/dev/sdh
 #HD[8]=/dev/sdi
@@ -44,28 +45,31 @@ HD[5]=/dev/sdf
 #HD[24]=/dev/sdy
 
 # Temperatures to change fan speed at
-# Any temp between OFF and HIGH will cause fan to run on low speed setting 
+# Any temp between OFF and HIGH will cause fan to run on low speed setting
 FAN_OFF_TEMP=35     # Anything this number and below - fan is off
 FAN_HIGH_TEMP=45    # Anything this number or above - fan is high speed
 
-# Fan speed settings. Run pwmconfig (part of the lm_sensors package) to determine 
+# Fan speed settings. Run pwmconfig (part of the lm_sensors package) to determine
 # what numbers you want to use for your fan pwm settings. Should not need to
 # change the OFF variable, only the LOW and maybe also HIGH to what you desire.
-# The START variable controls the speed to get the fan spinning from 0 
+# The START variable controls the speed to get the fan spinning from 0
 # (Default: 255 to be safe).
 # Any real number between 0 and 255.
 #
 FAN_OFF_PWM=0
-FAN_LOW_PWM=100
-FAN_START_PWM=255
+FAN_LOW_PWM=14
+FAN_START_PWM=30
 FAN_HIGH_PWM=255
 
-# Fan device. Depends on your system. pwmconfig can help with finding this out. 
+# Fan device. Depends on your system. pwmconfig can help with finding this out.
 # pwm1 is usually the cpu fan. You can "cat /sys/class/hwmon/hwmon0/device/fan1_input"
-# or fan2_input and so on to see the current rpm of the fan. If 0 then fan is off or 
+# or fan2_input and so on to see the current rpm of the fan. If 0 then fan is off or
 # there is no fan connected or motherboard can't read rpm of fan.
 # ARRAY_FAN=/sys/class/hwmon/hwmon1/device/pwm2
-ARRAY_FAN=/sys/class/hwmon/hwmon2/pwm1
+ARRAY_FAN=/sys/class/hwmon/hwmon4/pwm1
+ARRAY_FAN_INPUT=/sys/class/hwmon/hwmon4/fan1_input
+
+FAN_NAME="Front"
 
 ### END USER SET VARIABLES ###
 
@@ -82,7 +86,7 @@ PWM_INCREMENT=$(( (FAN_HIGH_PWM - FAN_LOW_PWM) / NUM_STEPS))
 OUTPUT+="Linear PWM Range is "$FAN_LOW_PWM" to "$FAN_HIGH_PWM" in "$NUM_STEPS" increments of "$PWM_INCREMENT$'\n'
 
 
-# while loop to get the highest temperature of active drives. 
+# while loop to get the highest temperature of active drives.
 # If all are spun down then high temp will be set to 0.
 while [ "$CURRENT_DRIVE" -le "$NUM_OF_DRIVES" ]
 do
@@ -106,6 +110,7 @@ fi
 
 # previous speed
 PREVIOUS_SPEED=`cat $ARRAY_FAN`
+PREVIOUS_RPM=`cat $ARRAY_FAN_INPUT`
 
 # Set the fan speed based on highest temperature
 if [ "$HIGHEST_TEMP" -le "$FAN_OFF_TEMP" ]; then
@@ -131,9 +136,10 @@ fi
 
 # produce output if the fan speed was changed
 CURRENT_SPEED=`cat $ARRAY_FAN`
+CURRENT_RPM=`sleep 2 && cat $ARRAY_FAN_INPUT`
 if [ "$PREVIOUS_SPEED" -ne "$CURRENT_SPEED" ]; then
-  echo "Fan speed has changed."
+  echo "${FAN_NAME} fan speed changed ("$PREVIOUS_SPEED" -> "$CURRENT_SPEED"), rpm ("$PREVIOUS_RPM" -> "$CURRENT_RPM")"
   echo "${OUTPUT}"
 else
-  echo "Fan speed unchanged. Highest temp: "$HIGHEST_TEMP" Current pwm: "$CURRENT_SPEED
+  echo "${FAN_NAME} fan speed unchanged. Highest temp: "$HIGHEST_TEMP" Current pwm: "$CURRENT_SPEED", rpm: "$CURRENT_RPM
 fi
